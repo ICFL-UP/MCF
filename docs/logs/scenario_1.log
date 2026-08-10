@@ -1,0 +1,14 @@
+[t=0s] verifyValidator(validator1)=0x709979...: True
+Waiting 3 seconds for credential to expire...
+[t=3s] verifyValidator(validator1)=0x709979...: False
+CREDENTIAL EXPIRED — access denied
+
+[t=3s] verifyValidator(validator2)=0x3C44Cd...: True
+[t=3s] verifyValidator(validator2) post-revoke: False
+CREDENTIAL REVOKED — access denied
+
+--- Summary ---
+Step           Pass   Note
+------------------------------------------------------------
+TTL expiry     PASS   verifyValidator returned False
+Revocation     PASS   bridge confirmTransaction reverted

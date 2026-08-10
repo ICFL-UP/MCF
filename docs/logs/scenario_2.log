@@ -1,0 +1,17 @@
+Building 30-day baseline...
+Baseline: 6000 transactions, mean=43.6 ETH, std=81.2 ETH
+Figure saved: figures/scenario_2_timeline.png
+[mode] End-to-end against http://127.0.0.1:8545
+Registry deployed at 0x5FbDB2315678afecb367f032d93F642f64180aa3
+Registered 5 validators
+Bridge deployed at 0x0165878A594ca255338adfa4d48449f69242Eb8F, monitor=0x976EA74026E726554dB657fA54763abd0C3a0aa9
+Ronin withdrawal emitted at block 12
+
+=== End-to-end Detect-gate result ===
+Pre-attack events scored: 1
+Ronin event score: 1067.695  -> CRITICAL
+Block emitted: 12
+Block paused : 13  (Δ=1 blocks)
+Wall-clock from emit to monitor-react: 36.18 ms
+Scoring-kernel time on Ronin tx     : 1.774 ms
+bridge.paused() = True

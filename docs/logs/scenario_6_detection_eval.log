@@ -1,0 +1,394 @@
+# BOLT Phase 16 — real-CCTX detection evaluation (scenario_6)
+# contribution C1-eval; closes gap G3 (circular '0% FPR') — non-circular evaluation
+#
+# ANTI-CIRCULARITY NOTE (the whole point of Phase 16):
+#   thresholds/location-scale for EVERY detector are calibrated on the TRAIN split
+#   (data/cctx/train.parquet, 100% benign). ALL metrics (ROC/PR/AUC/F1/phi/ARL) are
+#   measured on the HELD-OUT TEST split (data/cctx/test.parquet), which is where the
+#   incident rows live. train != test; the threshold-setting data is NEVER scored.
+#   train rows=58146 (benign), test rows=24921 (benign + 382 incident).
+#   sha256 verified: train=True test=True
+#   positive labels: ['incident:nomad', 'incident:ronin']
+#
+# UNITS: the raw CCTX 'value' is the on-chain amount in token BASE UNITS with MIXED
+#   per-token decimals (18-dec ETH-class next to 6-dec USDC / 8-dec WBTC) — NOT
+#   cross-token comparable, so all detectors score value_usd (upstream per-tx USD
+#   valuation, the one common denomination). Verified on the Ronin drain row:
+#   1.736e23 base units = 173,600 ETH and value_usd = 539,884,276 USD.
+# SCALE: heavy-tailed value scored as signed log-z (log10(value)-mu_log)/sigma_log,
+#   mu_log=2.8902 sigma_log=1.0894 calibrated on TRAIN benign;
+#   identical scale for the detector's value_z feature and the value baselines.
+# runtime: 48.4s  (node-less; pure Python/data)
+#
+# PARAMETER SELECTION (V2 2.3 — train-only, non-circular):
+#   SelectedParams: drift(δ)=0.25 threshold(λ)=4 cap=2
+#   phi_train=0.00351 power_train=0.922 fpr_budget=0.01 grid_size=45
+#   procedure: FPR-budget<=0.01 on TRAIN benign stream; power over TRAIN-only geometry family sigma=(1.0, 2.0) x events=(30, 90) (12 drains on TRAIN cadence; DISJOINT from the sigma=1.5/60-event eval point); grid 45 configs; seed 42
+#   NOTE: the selected triple differs from the legacy hand-picked (δ,λ,cap)=(0.5, 8.0, 2.0) — the headline sequential-cpd φ/AUC below
+#   SUPERSEDE the previous (legacy-triple) log/ledger values. Ablation deltas:
+#   docs/bolt/ablations.md (Table 1 marks both configs).
+#   Composite weights (0.5,0.3,0.2) and ALERT=3.0/CRITICAL=6.0 stay
+#   dissertation-fixed (§11.2.3) — ablated in docs/bolt/ablations.md, never
+#   train-selected; their FPR behaviour is characterised by scenario_4.
+#
+# GEOMETRY DISJOINTNESS (B2a): the (delta,lambda,cap) selection maximises power over a
+#   TRAIN-only attack-geometry family sigma=(1.0, 2.0) x events=(30, 90)
+#   (drains on the TRAIN cadence); the low-and-slow claim is evaluated at
+#   sigma=1.5/60 events on the TEST cadence — a geometry in NEITHER
+#   coordinate of the selection family, so the params were never tuned to the
+#   exact attack they are scored against. The sigma sweep below shows the full
+#   seq-vs-value trade including the crossover.
+#
+# SCORE SEMANTICS (B6): the sequential detector's per-row ROC/PR score below is the
+#   INSTANTANEOUS Page-Hinkley statistic at each row. The previous headline used the
+#   RUNNING MAX of that statistic — monotone non-decreasing along the stream, so its
+#   AUC partly ranks rows by TIME-ORDER (later rows outrank earlier ones regardless
+#   of content), an artifact for a per-row separability metric. Both are reported:
+#     instantaneous (PRIMARY per-row score): AUC-ROC=0.9700 AUC-PR=0.3740
+#     running-max  (ANNOTATED ARTIFACT):     AUC-ROC=0.9562 AUC-PR=0.5381
+#   Change-point-native metrics (detection delay, ARL, precision at the matched
+#   phi budget) are the PRIMARY metrics for this detector class and lead the log;
+#   per-row ROC/PR is secondary either way.
+#
+# OPERATING POINTS (B4): every baseline's flag threshold is FPR-MATCHED on the
+#   benign TRAIN stream to the same budget the sequential detector's selection uses
+#   (phi_train <= 0.01); realized TEST phi is reported per row (train->test
+#   drift means it can exceed the train budget — reported, not hidden). The old
+#   'as-published/default' operating points (value-zscore at the q=0.999 fast-path
+#   quantile, robust-MAD k=3.5, IsolationForest contamination='auto') appear ONLY in
+#   the clearly-labelled secondary table.
+
+============================================================================================================
+PRIMARY METRICS (B6) — change-point-native: detection delay / run lengths / precision
+     at the matched phi budget, on the HELD-OUT REAL TEST split
+============================================================================================================
+A streaming change-point detector is judged by WHEN it fires (delay after onset,
+run length between false alarms) and WHAT its alarms are worth (precision at a
+fixed benign-FPR budget) — not by per-row population AUC (secondary table below).
+
+detector                      ARL0(s)    ARL1(s)  prec@op  phi(test)  target(train)
+------------------------------------------------------------------------------------------------------------
+sequential-cpd                371,868          0   0.5079     0.0025         <=0.01
+value-zscore                   22,648          0   0.0366     0.0548         <=0.01
+iforest-corrected               7,129          0   0.0113     0.1819         <=0.01
+robust-mad                     26,350          0   0.0432     0.0460         <=0.01
+xchainwatcher-rules      >=23,055,842          0   1.0000     0.0000 rule-based (n/a)
+------------------------------------------------------------------------------------------------------------
+ARL0 = mean run length between FALSE trips on benign TEST (seconds; '>=' = right-censored
+       lower bound when the detector never false-trips, as Phase 12 reported).
+ARL1 = mean time-to-detection (seconds) after the real Ronin incident onset on TEST.
+       NOTE: a sequential-detector Ronin ARL1 of 0 s reflects the Ronin row tripping the
+       fast path on its OWN event (its signed-log-z exceeds the train fast-path quantile) — a
+       single-event catch IDENTICAL to a value threshold, NOT a sequential-accumulation
+       result. The representative time-to-detection for the accumulating/low-and-slow
+       regime is the NOMAD-onset ARL1 = 1,408 s (per-counterparty accumulation, the
+       genuine sequential capability the detector is sold on).
+prec@op = precision at the flag operating point (every operating point calibrated on
+       TRAIN to the same benign-FPR budget 0.01 — B4; see calibration lines below).
+phi  = realized benign false-positive rate at that operating point on HELD-OUT TEST.
+
+Per-destination detection delay (sequential detector, real Nomad structuring
+destinations — the distributional PRIMARY delay statement; full detail in 16.5):
+  detected 14/16 destinations; mean finite delay = 1,792 s,
+  bootstrap 95% CI [1,144, 2,536] s; never detected: 2 (reported, not dropped).
+
+Operating-point calibration provenance (B4):
+  sequential-cpd         (δ,λ,cap) train-selected under φ_train<=0.01; fast-path z=q0.999=3.414
+  value-zscore           |log-z| > 2.873 (TRAIN q0.99, 1% budget)
+  iforest-corrected      score > 0.6907 (TRAIN q0.99, 1% budget)
+  robust-mad             robust-z > k=3.999 (TRAIN q0.99, 1% budget; as-published k=3.5 secondary)
+
+============================================================================================================
+SECONDARY (16.4) — per-row population metrics: sequential detector vs 3 FPR-matched
+     baselines + published-rules comparator on the HELD-OUT REAL TEST split
+============================================================================================================
+Per-row scores: sequential = INSTANTANEOUS Page-Hinkley statistic (B6; the legacy
+running-max artifact is quantified in the header: AUC-ROC 0.9562 running-max vs
+0.9700 instantaneous). A streaming detector is not a per-row classifier;
+this table exists for transparency, not as the headline.
+
+detector                AUC-ROC   AUC-PR      F1   phi(FP)        ARL0(s)      ARL1(s)
+------------------------------------------------------------------------------------------------------------
+sequential-cpd           0.9700   0.3740  0.2520    0.0025        371,868            0
+value-zscore             0.8716   0.0979  0.0574    0.0548         22,648            0
+iforest-corrected        0.7822   0.0548  0.0208    0.1819          7,129            0
+robust-mad               0.9214   0.1461  0.0653    0.0460         26,350            0
+xchainwatcher-rules      1.0000   1.0000  1.0000    0.0000   >=23,055,842            0
+------------------------------------------------------------------------------------------------------------
+
+SECONDARY — 'as-published/default' operating points (B4; NOT budget-matched, kept only
+to show what the unmatched defaults would have reported; same continuous scores, so
+AUC columns are identical to the primary rows):
+  detector               default rule                        phi(test)       F1  prec@op
+  ----------------------------------------------------------------------------------------
+  value-zscore           |log-z| > fast-path q0.999             0.0251   0.0218   0.0175
+  iforest-corrected      contamination='auto' predict           0.8630   0.0348   0.0177
+  robust-mad             robust-z > k=3.5 (Iglewicz-Hoaglin)     0.0619   0.0533   0.0331
+
+Confusion matrices at the operating point [[TN, FP], [FN, TP]] (rows=truth, cols=pred):
+  sequential-cpd         TN= 24477 FP=    62 | FN=  318 TP=  64
+  value-zscore           TN= 23195 FP=  1344 | FN=  331 TP=  51
+  iforest-corrected      TN= 20076 FP=  4463 | FN=  331 TP=  51
+  robust-mad             TN= 23409 FP=  1130 | FN=  331 TP=  51
+  xchainwatcher-rules    TN= 24539 FP=     0 | FN=    0 TP= 382
+
+Note (honest): the value baselines attain high value-ROC but pathological operating
+points (e.g. iforest-corrected flags a large benign fraction at 'auto' contamination):
+in the common USD denomination, benign whale transfers are of the same order as the
+largest drain rows (only the single biggest Ronin leg exceeds every benign transfer,
+and the Nomad rows sit well inside the benign bulk) — no per-tx value
+threshold separates incidents on value alone. The sequential detector's contribution is
+the low-and-slow recall + near-zero phi below, not the raw per-row AUC (a streaming
+change-point detector is not a per-row population classifier).
+
+Note (V2 2.4, published-rules comparator — read before comparing rows): the
+xchainwatcher-rules row re-implements XChainWatcher's core cross-chain soundness rules
+(Augusto et al., arXiv:2410.02029) over the parquet's deposit<->withdrawal linkage
+columns. TWO caveats: (a) the CCTX incident labels were DERIVED BY XChainWatcher's
+unmatched-withdrawal analysis, so its ~perfect incident recall here is BY CONSTRUCTION
+— this is a capability/deployment-cost comparison (both chains instrumented +
+protocol-specific rules vs BOLT's destination-stream-only detector), NOT a fair
+same-information classifier shoot-out; (b) its continuous score has only 3 levels
+(1.0 unmatched / 0.5 finality violation / 0.0 clean), so its AUC-ROC/AUC-PR are COARSE
+and not comparable to the continuous scorers — its PRIMARY numbers are the
+operating-point recall/precision/phi (per-incident table below), not AUC.
+
+====================================================================================================
+16.6 BOOTSTRAP 95% CONFIDENCE INTERVALS — 1000 stratified bootstrap resamples
+     (B5; TWO-SIDED: both classes drawn with replacement, single seeded RNG)
+====================================================================================================
+Both the 382 incident positives AND the benign background are resampled with
+replacement each resample (rare-positive two-sided bootstrap), so AUC-PR/F1/AUC-ROC
+CIs honestly bracket the small incident set's sampling variability (not frozen).
+B5 note: the previous log's '12 seeds' were 12 resamples of one deterministic
+output — never independent replicates; the 2.5th percentile of 12 points is the
+sample minimum. These bands use 1000 resamples.
+detector                         AUC-ROC [95% CI]            AUC-PR [95% CI]
+----------------------------------------------------------------------------------------------------
+sequential-cpd         0.9702 [0.9615,0.9778]    0.3749 [0.3410,0.4101]
+value-zscore           0.8714 [0.8631,0.8790]    0.0978 [0.0856,0.1118]
+iforest-corrected      0.7819 [0.7741,0.7906]    0.0552 [0.0490,0.0650]
+robust-mad             0.9213 [0.9146,0.9271]    0.1461 [0.1331,0.1609]
+xchainwatcher-rules    1.0000 [1.0000,1.0000]    1.0000 [1.0000,1.0000]
+----------------------------------------------------------------------------------------------------
+detector                              F1 [95% CI]               phi [95% CI]
+----------------------------------------------------------------------------------------------------
+sequential-cpd         0.2503 [0.2000,0.3021]    0.0025 [0.0019,0.0031]
+value-zscore           0.0570 [0.0432,0.0719]    0.0548 [0.0520,0.0576]
+iforest-corrected      0.0207 [0.0158,0.0261]    0.1819 [0.1771,0.1869]
+robust-mad             0.0648 [0.0493,0.0817]    0.0461 [0.0435,0.0486]
+xchainwatcher-rules    1.0000 [1.0000,1.0000]    0.0000 [0.0000,0.0000]
+
+================================================================================
+phi (benign false-positive rate) — the H1 term consumed by Phase 17
+================================================================================
+MEASURED ON THE HELD-OUT REAL BENIGN CCTX TEST ROWS (not the threshold-setting
+generator) — this is the anti-circular phi.
+  sequential-cpd phi = 0.00250  95% CI [0.00192, 0.00310]
+  value-zscore           phi = 0.05477  95% CI [0.05196, 0.05758]
+  iforest-corrected      phi = 0.18190  95% CI [0.17706, 0.18693]
+  robust-mad             phi = 0.04605  95% CI [0.04352, 0.04862]
+  xchainwatcher-rules    phi = 0.00000  95% CI [0.00000, 0.00000]
+
+==========================================================================================
+16.5 LOW-AND-SLOW COMPLEMENT (H1) — sequential detector catches what the value z-score misses
+==========================================================================================
+A. Canonical injected drain (ILLUSTRATIVE — synthetic schedule on real benign cadence):
+   per-tx value      = 33,439.74 USD  (1.50 log-sigma above benign)
+   benign |log-z| p99 = 4.293  -> the log-scaled value threshold MISSES each tx
+   monitor.anomaly.compute_score (the REAL repo value-threshold baseline) on this tx = -0.5781 -> NORMAL (MISSES)
+   sequential detector trips after 4 events on the same-counterparty drain
+   recall @ operating point:  sequential=0.950   value-zscore=0.000
+   => low-and-slow recall gap (detector - z-score) = +0.950  <-- the H1 result
+   (B2a: evaluation geometry sigma=1.5/60 events is DISJOINT from the
+   selection family sigma=(1.0, 2.0) x events=(30, 90) — header note.)
+
+A'. SIGMA SWEEP (B2b) — same drain schedule at per-tx magnitudes from below to ABOVE
+    the value threshold, so the seq-vs-value crossover is SHOWN, not a single point
+    where the value baseline is 0-recall by construction:
+    value-zscore threshold (TRAIN-matched, 1% budget) = 2.873 log-sigma
+     sigma     per-tx USD  seq recall  zscore recall  seq 1st trip note
+    ----------------------------------------------------------------------------
+      1.00          9,540       0.917          0.000       event 6 
+      1.50         33,440       0.950          0.000       event 4 <- eval point (case A)
+      2.00        117,211       0.967          0.000       event 3 
+      2.50        410,838       0.967          0.000       event 3 
+      2.75        769,170       0.967          0.000       event 3 
+      3.00      1,440,039       0.967          1.000       event 3 <- first level above value threshold
+      3.50      5,047,519       1.000          1.000       event 1 
+      4.00     17,692,196       1.000          1.000       event 1 
+    crossover (smallest swept sigma with nonzero value-baseline recall): sigma = 3
+    READ: below its threshold the value baseline is blind BY CONSTRUCTION (0 recall);
+    above it, each tx flags on its own and both detectors catch the drain. The
+    sequential detector's contribution is the sub-threshold band, where accumulation
+    is the ONLY signal — the value baseline matching it above the crossover is
+    expected and reported, not hidden. Figure: figures/lowslow_sweep.png
+
+B. HONEST CONTRAST — real Nomad structuring subset (destinations with >=3 incident txs):
+   structuring destinations = 16; dust fraction (< 1 USD rows) = 0.00
+   In the common USD denomination this subset is repeated mid-6-figure transfers to a
+   few payees, NOT a pure low-and-slow upward drain. Reported
+   transparently — the H1 claim rests on the canonical case (A), not on this subset.
+   95% CIs are CLUSTER bootstraps (1000 resamples) over the structuring DESTINATIONS
+   (rows within one payee are not independent — the destination is the resampling unit).
+   per-tx recall:        sequential=0.633 [0.521,0.709]   value-zscore=0.245 [0.194,0.286]
+   per-destination recall: sequential=0.875   value-zscore=0.812
+
+C. DUST SUB-COHORT (real Nomad, value-invisible rows) — structuring rows with value
+   < 1 USD in the COMMON USD denomination:
+   n_dust_rows = 0 (0% of the structuring subset).
+   UNITS-FIX NOTE: the earlier '88% dust' cohort was a mixed-token-decimals ARTIFACT
+   (a blanket /1e18 read ~$200 six-decimal stablecoin transfers as ~2e-7 'ETH');
+   scored in the common USD denomination the cohort is re-derived from scratch.
+   observed: the dust sub-cohort is EMPTY under the corrected units — no structuring
+   row is genuinely below the per-tx dust cutoff, so this cohort contributes no
+   evidence in either direction; the H1 complement claim rests on the canonical
+   injected case (A), carried with its ILLUSTRATIVE label.
+
+ARL1 caveat + per-destination delay bootstrap (V2 2.6):
+   Nomad-onset ARL1 = 1,408 s is a single onset (n~=1); the per-destination
+   bootstrap below is the only distributional statement we can honestly make.
+   per-destination delay (first incident tx -> first attributable seq trip), 16 structuring destinations:
+     detected: 14 destinations, delays (s) = ['0', '315', '511', '559', '657', '811', '937', '1543', '2974', '2986', '2986', '2986', '3611', '4212']
+     NEVER detected (delay = inf, reported, not dropped): 2 of 16 destinations
+     mean finite delay = 1,792 s; bootstrap 95% CI over destinations (1000 resamples of the finite delays) = [1,144, 2,536] s
+
+==========================================================================================
+16.6 SENSITIVITY SWEEP over {T, B, r, W, Delta}
+==========================================================================================
+W is the genuine detector-side knob (re-fit per window); T,B,r,Delta are response-path
+(limiter/breaker/latency) knobs that move the effective ARL1 (signal time + Delta), not
+the detector's per-row scores. AUC/phi along T,B,r,Delta are detector-side (flat).
+  --- T ---
+         value   AUC-ROC      phi      ARL1(s)
+          1000    0.9700   0.0025           60
+          2500    0.9700   0.0025           60
+          5000    0.9700   0.0025           60
+         1e+04    0.9700   0.0025           60
+         2e+04    0.9700   0.0025           60
+  --- B ---
+         value   AUC-ROC      phi      ARL1(s)
+           250    0.9700   0.0025           60
+           500    0.9700   0.0025           60
+          1000    0.9700   0.0025           60
+          2000    0.9700   0.0025           60
+          4000    0.9700   0.0025           60
+  --- r ---
+         value   AUC-ROC      phi      ARL1(s)
+          0.25    0.9700   0.0025           60
+           0.5    0.9700   0.0025           60
+             1    0.9700   0.0025           60
+             2    0.9700   0.0025           60
+             4    0.9700   0.0025           60
+  --- W ---
+         value   AUC-ROC      phi      ARL1(s)
+           900    0.9724   0.0016            0
+          1800    0.9721   0.0019            0
+          3600    0.9700   0.0025            0
+          7200    0.9676   0.0032            0
+      1.44e+04    0.9662   0.0042            0
+  --- Delta ---
+         value   AUC-ROC      phi      ARL1(s)
+            12    0.9700   0.0025           12
+            24    0.9700   0.0025           24
+            60    0.9700   0.0025           60
+           120    0.9700   0.0025          120
+           300    0.9700   0.0025          300
+
+====================================================================================================
+## Statistical tests (V2 2.2)
+====================================================================================================
+No bare inequalities: every comparison below carries a test statistic, a p-value
+and (for recall) a confidence interval, via monitor/stats_tests.py.
+
+DeLong correlated-AUC tests on the FULL held-out TEST split (pooled per-row scores),
+sequential-cpd (A) vs each baseline (B):
+  comparison                                AUC_A    AUC_B      dAUC        z           p
+  ----------------------------------------------------------------------------------------
+  seq vs value-zscore                      0.9700   0.8716   +0.0984   +16.64    3.51e-62
+  seq vs iforest-corrected                 0.9700   0.7822   +0.1878   +29.06   1.13e-185
+  seq vs robust-mad                        0.9700   0.9214   +0.0486    +9.45    3.33e-21
+  seq vs xchainwatcher-rules               0.9700   1.0000   -0.0300    -7.51    5.74e-14
+
+READ THIS CORRECTLY (direction computed from this run's DeLong rows):
+  pooled per-row AUC significantly HIGHER than: value-zscore, iforest-corrected, robust-mad (dAUC > 0, p < 0.05)
+  pooled per-row AUC significantly LOWER than: xchainwatcher-rules (dAUC < 0, p < 0.05)
+Neither direction is a claim: per the reframed thesis (V2 2.1) the sequential
+detector is NOT sold as a better per-row population classifier — its contribution is
+the low-and-slow COMPLEMENT (McNemar below) at a near-zero benign flag rate phi.
+The DeLong rows are reported for statistical transparency only.
+
+McNemar paired flag tests on the FULL TEST split at each operating point
+(n01 = seq correct where baseline wrong; n10 = baseline correct where seq wrong):
+  comparison                                n01    n10      stat           p    method
+  ----------------------------------------------------------------------------------------
+  seq vs value-zscore                      1374     79   1152.40   1.35e-252   chi2-cc
+  seq vs iforest-corrected                 4486     72   4272.61    0.00e+00   chi2-cc
+  seq vs robust-mad                        1160     79    941.40   9.80e-207   chi2-cc
+  seq vs xchainwatcher-rules                  0    380    378.00    3.39e-84   chi2-cc
+
+H1 HEADLINE TEST (B2c) — McNemar on the MIXED stream (real benign TEST rows +
+injected canonical drain merged in time order; 24599 rows =
+24539 benign + 60 injected; y = injected mask). Both detectors
+can plausibly fire here — benign false positives count against each side, so the
+discordant pairs are informative in BOTH directions (n10 is not structurally 0):
+  seq vs value-zscore  n01=1384 n10=45 statistic=1252.79 p=2.05e-274 method=chi2-cc
+  direction holds (seq drain recall 0.950 > z-score 0.000): True; asserted at p < 0.01.
+
+ILLUSTRATION ONLY (demoted, B2c) — injected-drain-only paired flags (y=all-True):
+  n01=57 n10=0. With every row positive and the value baseline
+  below threshold by construction, n10=0 is GUARANTEED — a McNemar p-value on this
+  design is theater and is intentionally NOT reported.
+
+Per-incident recall at the operating point, with CI (Clopper-Pearson exact for n<30,
+percentile bootstrap otherwise). Reminder: xchainwatcher-rules recall ~1.0 is
+labels-by-construction (the incident labels ARE its unmatched-withdrawal output);
+these are its primary operating-point numbers, per the V2 2.4 note above:
+  detector               incident                n   recall              95% CI           method
+  ----------------------------------------------------------------------------------------------
+  sequential-cpd         incident:nomad        380    0.163       [0.129,0.200]        bootstrap
+  sequential-cpd         incident:ronin          2    1.000       [0.158,1.000]  clopper-pearson
+  value-zscore           incident:nomad        380    0.129       [0.095,0.163]        bootstrap
+  value-zscore           incident:ronin          2    1.000       [0.158,1.000]  clopper-pearson
+  iforest-corrected      incident:nomad        380    0.129       [0.097,0.163]        bootstrap
+  iforest-corrected      incident:ronin          2    1.000       [0.158,1.000]  clopper-pearson
+  robust-mad             incident:nomad        380    0.129       [0.095,0.163]        bootstrap
+  robust-mad             incident:ronin          2    1.000       [0.158,1.000]  clopper-pearson
+  xchainwatcher-rules    incident:nomad        380    1.000       [1.000,1.000]        bootstrap
+  xchainwatcher-rules    incident:ronin          2    1.000       [0.158,1.000]  clopper-pearson
+
+============================================================================================================
+## Per-incident results (temporal holdout)
+============================================================================================================
+Protocol: for EACH incident, calibration = benign-only rows strictly before
+onset - 1 h on the reassembled FULL timeline (train + test in true time order);
+LogScale, the fast-path z (q=0.999) and the (delta, lambda, cap) selection are all
+REFIT on that calibration only (no future information); the window
+[onset, onset + 7 d] is then streamed in true order. Stronger than the single
+time split: each incident gets its own no-future-information calibration.
+
+  incident         detector             n_pos  recall          95% CI           method   prec  phi_win  n_calib
+  ----------------------------------------------------------------------------------------------------------
+  incident:nomad   sequential-cpd         380   0.163   [0.129,0.200]        bootstrap  1.000   0.0000    82575
+  incident:nomad   value-zscore           380   0.029   [0.013,0.045]        bootstrap  0.846   0.0230    82575
+  incident:nomad   xchainwatcher-rules    380   1.000   [1.000,1.000]        bootstrap  1.000   0.0000    82575
+  incident:ronin   sequential-cpd           2   1.000   [0.158,1.000]  clopper-pearson  0.154   0.0031    65448
+  incident:ronin   value-zscore             2   1.000   [0.158,1.000]  clopper-pearson  0.087   0.0058    65448
+  incident:ronin   xchainwatcher-rules      2   1.000   [0.158,1.000]  clopper-pearson  1.000   0.0000    65448
+  ----------------------------------------------------------------------------------------------------------
+Leak check (asserted in main): every incident's calibration_max_ts < onset_ts:
+  incident:nomad   onset=2022-08-01 21:32:31+00:00  calibration_max_ts=2022-08-01 20:30:31+00:00
+  incident:ronin   onset=2022-03-23 13:29:09+00:00  calibration_max_ts=2022-03-23 12:29:00+00:00
+
+READ THIS CORRECTLY (the honest shape this table exists to SHOW, not to improve):
+the 382 pooled positives are really ~one Nomad event + one two-row Ronin event, so
+pooled metrics are dominated by Nomad and the effective incident-level n is 2.
+Ronin (n=2): ANY recall estimate carries a WIDE Clopper-Pearson CI — two rows prove
+little on their own. Nomad: the sequential detector's per-row recall is LOW under
+this stricter per-incident calibration (consistent with the pooled FN majority) —
+its catch is event-level accumulation at near-zero phi, not per-row coverage.
+xchainwatcher-rules recall ~1.0 remains labels-by-construction (V2 2.4 note above).
+Per-incident is the honest unit of analysis.
+
+Figures: figures/roc_pr_curves.png, figures/arl_curves.png, figures/sensitivity.png,
+         figures/lowslow_sweep.png

@@ -1,0 +1,38 @@
+# SMTChecker report (V2 task 1.3) — solc 0.8.24 CHC engine over the four v2 contracts
+#
+# Command (run from the repo root; z3 4.12 is provided by the pinned `z3-solver`
+# dev dependency — the static solc binary dlopens libz3.so.4.12 from the wheel):
+#
+#   LD_LIBRARY_PATH=.venv/lib/python3.14/site-packages/z3/lib \
+#   uv run solc --evm-version cancun --model-checker-engine chc \
+#     --model-checker-targets assert,overflow,underflow,divByZero \
+#     --model-checker-timeout 60000 \
+#     --base-path . --include-path node_modules \
+#     @openzeppelin/=node_modules/@openzeppelin/ \
+#     contracts/RateLimiter.sol contracts/CircuitBreaker.sol \
+#     contracts/RegistryV2.sol contracts/BridgeV2.sol
+#
+# (--evm-version cancun is required: OpenZeppelin v5 uses `mcopy`, a Cancun opcode;
+#  solc 0.8.24's default EVM target rejects it.)
+#
+# RESULT: exit code 0, EMPTY diagnostic output (verbatim: nothing — the run printed
+# zero warnings and zero errors).
+#
+# Interpretation: with the CHC engine, solc emits a warning for every violated target
+# (counterexample) and, when targets cannot be discharged, the summary warning
+# "CHC: N verification condition(s) could not be proved ...". Neither appeared:
+# ALL generated verification conditions for the assert/overflow/underflow/divByZero
+# targets across RateLimiter, CircuitBreaker, RegistryV2 and BridgeV2 (and their
+# reachable OpenZeppelin library code) were PROVED SAFE within the 60 s per-query
+# budget. Without a solver, the same command degrades to explicit
+# "CHC analysis was not possible since no Horn solver was found" warnings — i.e.
+# solver presence is loudly observable, so the silence above is a proof result,
+# not a skipped analysis.
+#
+# Feasibility note: the full run takes ~50 minutes of CPU (CHC over ECDSA-recovery
+# and string-building code paths is expensive). A per-target enumeration re-run with
+# --model-checker-show-proved-safe was attempted and abandoned as infeasible in
+# interactive time (it re-solves every query); the pass/fail outcome above is the
+# committed evidence. The Foundry invariant suite (V2 1.4, `make invariants`) is the
+# complementary bytecode-level check for the stateful properties SMTChecker does not
+# cover (window<=T, extraction<=T+r*delta, revoked-never, bucket<=B, nonce-reuse).

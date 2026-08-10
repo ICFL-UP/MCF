@@ -1,0 +1,122 @@
+# BOLT Phase 22 B1 — benign-utility experiment + Pareto frontier (scenario_8)
+# mode: offline replay of the REAL benign CCTX stream (XChainWatcher) through
+# faithful Python models of RateLimiter (token bucket) + CircuitBreaker (61-slot
+# bucketed window, latch-until-reset). Deterministic; node-less.
+# denomination: ledger ETH params scaled to USD at $3,110/ETH — the
+# dataset's OWN Ronin-row valuation ($539,884,300 / 173,600 ETH); sensitivity at
+# $2,500 and $3,500 below.
+# reset assumption: governance resets a benign latch after 3600 s (= W).
+# delay model: FIFO retry-until-admitted; delay = service - arrival.
+#
+## benign stream
+  transfers: 82685  total value: $4.35B
+  single-transfer size: p50=$358  p99=$743,849  p99.9=$3.45M  max=$396.11M
+  hourly volume: mean=$541,710  p99=$6.11M  max=$405.28M
+#
+## locked-params results
+## ledger[locked] — B=1000 ETH ($2.50M), r=1 ETH/s ($2,500/s), T=5000 ETH ($12.50M), W=3600 s @ $2,500/ETH
+  transfers: 82685  served: 82551  denied: 134 (0.162% of count)
+  benign VALUE denied:            $2.22B  (51.13% of $4.35B)
+  benign VALUE delayed (>0 s):    $110.86M  (2.55%)
+  benign VALUE denied-or-delayed: 53.68%
+  delay over served transfers: P50=0s  P95=0s  P99=0s  max=2523s
+  benign-triggered breaker halts: 0  (value trip structurally unreachable: B + r·W ≤ T)
+  largest transfer served with ZERO delay: $2.50M  (theoretical instant-admission cap = B = $2.50M)
+  fast-regime extraction bound T + r·Δ: $12.65M  (2.3% of the Ronin drain $539.88M)
+
+## ledger[locked] — B=1000 ETH ($3.11M), r=1 ETH/s ($3,110/s), T=5000 ETH ($15.55M), W=3600 s @ $3,110/ETH
+  transfers: 82685  served: 82593  denied: 92 (0.111% of count)
+  benign VALUE denied:            $2.11B  (48.43% of $4.35B)
+  benign VALUE delayed (>0 s):    $89.25M  (2.05%)
+  benign VALUE denied-or-delayed: 50.48%
+  delay over served transfers: P50=0s  P95=0s  P99=0s  max=2121s
+  benign-triggered breaker halts: 0  (value trip structurally unreachable: B + r·W ≤ T)
+  largest transfer served with ZERO delay: $3.09M  (theoretical instant-admission cap = B = $3.11M)
+  fast-regime extraction bound T + r·Δ: $15.74M  (2.9% of the Ronin drain $539.88M)
+
+## ledger[locked] — B=1000 ETH ($3.50M), r=1 ETH/s ($3,500/s), T=5000 ETH ($17.50M), W=3600 s @ $3,500/ETH
+  transfers: 82685  served: 82602  denied: 83 (0.100% of count)
+  benign VALUE denied:            $2.08B  (47.76% of $4.35B)
+  benign VALUE delayed (>0 s):    $68.78M  (1.58%)
+  benign VALUE denied-or-delayed: 49.34%
+  delay over served transfers: P50=0s  P95=0s  P99=0s  max=1681s
+  benign-triggered breaker halts: 0  (value trip structurally unreachable: B + r·W ≤ T)
+  largest transfer served with ZERO delay: $3.38M  (theoretical instant-admission cap = B = $3.50M)
+  fast-regime extraction bound T + r·Δ: $17.71M  (3.3% of the Ronin drain $539.88M)
+
+## ledger[alt-trip] — B=1000 ETH ($3.11M), r=1 ETH/s ($3,110/s), T=4000 ETH ($12.44M), W=3600 s @ $3,110/ETH
+  transfers: 82685  served: 82593  denied: 92 (0.111% of count)
+  benign VALUE denied:            $2.11B  (48.43% of $4.35B)
+  benign VALUE delayed (>0 s):    $126.88M  (2.92%)
+  benign VALUE denied-or-delayed: 51.35%
+  delay over served transfers: P50=0s  P95=0s  P99=316s  max=6506s
+  benign-triggered breaker halts: 6
+  largest transfer served with ZERO delay: $3.09M  (theoretical instant-admission cap = B = $3.11M)
+  fast-regime extraction bound T + r·Δ: $12.63M  (2.3% of the Ronin drain $539.88M)
+
+## Pareto sweep (x = benign value denied-or-delayed, y = bound T + r·Δ, Δ=60 s)
+  grid: 42 configs (B x r x T, T >= B, W=3600 s fixed)
+  B(ETH)     r(ETH/s)  T(ETH)      bound(USD)      denied%val  den-or-del%val  halts  p99delay(s)  pareto
+       5000        1      5000         $15.74M      38.40          42.65     18        1335  FRONTIER
+       1000        1      5000         $15.74M      48.43          50.48      0           0  -
+       5000       10      5000         $17.42M      38.40          42.41     18         715  FRONTIER
+       1000       10      5000         $17.42M      48.43          48.80      2           0  -
+       5000      100      5000         $34.21M      38.40          42.41     18         700  FRONTIER
+       1000      100      5000         $34.21M      48.43          48.74      2           0  -
+      20000        1     20000         $62.39M      33.05          34.11      0           0  FRONTIER
+       5000        1     20000         $62.39M      38.40          40.30      0           0  -
+       1000        1     20000         $62.39M      48.43          50.48      0           0  -
+      20000       10     20000         $64.07M      33.05          33.05      0           0  FRONTIER
+       5000       10     20000         $64.07M      38.40          38.40      0           0  -
+       1000       10     20000         $64.07M      48.43          48.43      0           0  -
+      20000      100     20000         $80.86M      33.05          33.05      0           0  -
+       5000      100     20000         $80.86M      38.40          38.40      0           0  -
+       1000      100     20000         $80.86M      48.43          48.43      0           0  -
+     100000        1    100000        $311.19M      24.73          24.73      0           0  FRONTIER
+      20000        1    100000        $311.19M      33.05          34.11      0           0  -
+       5000        1    100000        $311.19M      38.40          40.30      0           0  -
+       1000        1    100000        $311.19M      48.43          50.48      0           0  -
+     100000       10    100000        $312.87M      24.73          24.73      0           0  -
+      20000       10    100000        $312.87M      33.05          33.05      0           0  -
+       5000       10    100000        $312.87M      38.40          38.40      0           0  -
+       1000       10    100000        $312.87M      48.43          48.43      0           0  -
+     100000      100    100000        $329.66M      24.73          24.73      0           0  -
+      20000      100    100000        $329.66M      33.05          33.05      0           0  -
+       5000      100    100000        $329.66M      38.40          38.40      0           0  -
+       1000      100    100000        $329.66M      48.43          48.43      0           0  -
+     150000        1    200000        $622.19M       0.00           8.68      0       23787  FRONTIER
+     100000        1    200000        $622.19M      24.73          24.73      0           0  -
+      20000        1    200000        $622.19M      33.05          34.11      0           0  -
+       5000        1    200000        $622.19M      38.40          40.30      0           0  -
+       1000        1    200000        $622.19M      48.43          50.48      0           0  -
+     150000       10    200000        $623.87M       0.00           7.84      0           0  FRONTIER
+     100000       10    200000        $623.87M      24.73          24.73      0           0  -
+      20000       10    200000        $623.87M      33.05          33.05      0           0  -
+       5000       10    200000        $623.87M      38.40          38.40      0           0  -
+       1000       10    200000        $623.87M      48.43          48.43      0           0  -
+     150000      100    200000        $640.66M       0.00           7.83      1           0  FRONTIER
+     100000      100    200000        $640.66M      24.73          24.73      0           0  -
+      20000      100    200000        $640.66M      33.05          33.05      0           0  -
+       5000      100    200000        $640.66M      38.40          38.40      0           0  -
+       1000      100    200000        $640.66M      48.43          48.43      0           0  -
+#
+## parameter-scaling rule (derived from the observed benign stream)
+  B = p99.9 of single benign transfer size; T = max(B, 3 x p99 hourly volume);
+  r = T / W  (a full-T window sustainable at steady state).
+  rule-derived ledger: B=1,111 ETH ($3.45M), r=1.64 ETH/s, T=5,889 ETH ($18.32M)
+  -> bound $18.62M (3.4% of Ronin), denied-or-delayed 48.66% of benign value, halts 0
+#
+## value-coverage table (the operator's real knob on a whale-dominated stream)
+  smallest B admitting >= c of benign VALUE burst-free (count-quantiles of size
+  barely move denied VALUE, because value concentrates in a few whales):
+    coverage  50.0%  ->  B >= $2.74M (880 ETH)  ->  bound floor T + r·Δ >= $2.92M  (0.5% of Ronin)
+    coverage  60.0%  ->  B >= $9.20M (2,957 ETH)  ->  bound floor T + r·Δ >= $9.38M  (1.7% of Ronin)
+    coverage  75.0%  ->  B >= $155.81M (50,098 ETH)  ->  bound floor T + r·Δ >= $155.99M  (28.9% of Ronin)
+    coverage  90.0%  ->  B >= $339.85M (109,278 ETH)  ->  bound floor T + r·Δ >= $340.04M  (63.0% of Ronin)
+    coverage  99.0%  ->  B >= $396.11M (127,366 ETH)  ->  bound floor T + r·Δ >= $396.30M  (73.4% of Ronin)
+#
+## honest summary
+  LOCKED ledger: bound $15.74M (2.9% of Ronin) is purchased at 50.48% of benign VALUE denied-or-delayed
+  — benign whale transfers far above B dominate the utility cost (largest benign
+  transfer $396.11M vs B = $3.11M). The Pareto frontier + scaling rule
+  quantify exactly what admitting them costs in bound.
