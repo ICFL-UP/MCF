@@ -1,0 +1,7 @@
+Sub-scenario                                     Score Level
+-----------------------------------------------------------------
+High-value to known dest (5000 ETH)             29.744 CRITICAL
+Anomalous volume day (window=30)                 2.397 NORMAL
+Structuring attack (1736 ETH each)               9.854 CRITICAL
+
+Figure saved: figures/stress_test_scores.png

@@ -1,0 +1,89 @@
+# J15 — Pareto frontier re-derived against the PROVED envelope B + r(W + Δ)
+# source of x-values: docs/logs/scenario_8_benign_utility.log (published sweep; x depends on (B, r, T) via the
+#   benign replay and is UNCHANGED by J15 — only the ordinate changes)
+# y recomputed by LedgerETH.envelope_usd(); frontier by scenario_8.mark_pareto()
+# Δ = 60 s, W = 3600 s, $3,110/ETH, Ronin drain $539.88M
+# parse check 1 (B-sensitive): parsed (B, r, T) grid == sweep_grid() for all 42 configs
+# parse check 2: superseded-ordinate column reproduced EXACTLY
+# superseded-frontier membership is read from the log's own `pareto` column (full precision),
+#   not recomputed from the 2-dp x values printed in the table.
+#
+## Pareto sweep (x = benign value denied-or-delayed, y = PROVED envelope B + r·(W + Δ), Δ=60 s)
+#  J15: ranked by the proved envelope. T does not appear in it, so configs
+#  differing only in T share an ordinate. The superseded T + r·Δ column is kept
+#  alongside for continuity; it is NOT a bound (main.tex Sect. 4.2 / Appendix A).
+  grid: 42 configs (B x r x T, T >= B, W=3600 s fixed)
+  envelope collapse: 42 configs -> 15 distinct envelope values; 12 values are shared by >1 config (39 configs affected)
+  B(ETH)     r(ETH/s)  T(ETH)     envelope(USD)   [T+r·Δ]        denied%val  den-or-del%val  halts  p99delay(s)  pareto
+       1000        1      5000         $14.49M       $15.74M      48.43          50.48      0           0  FRONTIER
+       1000        1     20000         $14.49M       $62.39M      48.43          50.48      0           0  FRONTIER
+       1000        1    100000         $14.49M      $311.19M      48.43          50.48      0           0  FRONTIER
+       1000        1    200000         $14.49M      $622.19M      48.43          50.48      0           0  FRONTIER
+       5000        1     20000         $26.93M       $62.39M      38.40          40.30      0           0  FRONTIER
+       5000        1    100000         $26.93M      $311.19M      38.40          40.30      0           0  FRONTIER
+       5000        1    200000         $26.93M      $622.19M      38.40          40.30      0           0  FRONTIER
+       5000        1      5000         $26.93M       $15.74M      38.40          42.65     18        1335  -
+      20000        1     20000         $73.58M       $62.39M      33.05          34.11      0           0  FRONTIER
+      20000        1    100000         $73.58M      $311.19M      33.05          34.11      0           0  FRONTIER
+      20000        1    200000         $73.58M      $622.19M      33.05          34.11      0           0  FRONTIER
+       1000       10     20000        $116.94M       $64.07M      48.43          48.43      0           0  -
+       1000       10    100000        $116.94M      $312.87M      48.43          48.43      0           0  -
+       1000       10    200000        $116.94M      $623.87M      48.43          48.43      0           0  -
+       1000       10      5000        $116.94M       $17.42M      48.43          48.80      2           0  -
+       5000       10     20000        $129.38M       $64.07M      38.40          38.40      0           0  -
+       5000       10    100000        $129.38M      $312.87M      38.40          38.40      0           0  -
+       5000       10    200000        $129.38M      $623.87M      38.40          38.40      0           0  -
+       5000       10      5000        $129.38M       $17.42M      38.40          42.41     18         715  -
+      20000       10     20000        $176.03M       $64.07M      33.05          33.05      0           0  FRONTIER
+      20000       10    100000        $176.03M      $312.87M      33.05          33.05      0           0  FRONTIER
+      20000       10    200000        $176.03M      $623.87M      33.05          33.05      0           0  FRONTIER
+     100000        1    100000        $322.38M      $311.19M      24.73          24.73      0           0  FRONTIER
+     100000        1    200000        $322.38M      $622.19M      24.73          24.73      0           0  FRONTIER
+     100000       10    100000        $424.83M      $312.87M      24.73          24.73      0           0  -
+     100000       10    200000        $424.83M      $623.87M      24.73          24.73      0           0  -
+     150000        1    200000        $477.88M      $622.19M       0.00           8.68      0       23787  FRONTIER
+     150000       10    200000        $580.33M      $623.87M       0.00           7.84      0           0  FRONTIER
+       1000      100     20000          $1.14B       $80.86M      48.43          48.43      0           0  -
+       1000      100    100000          $1.14B      $329.66M      48.43          48.43      0           0  -
+       1000      100    200000          $1.14B      $640.66M      48.43          48.43      0           0  -
+       1000      100      5000          $1.14B       $34.21M      48.43          48.74      2           0  -
+       5000      100     20000          $1.15B       $80.86M      38.40          38.40      0           0  -
+       5000      100    100000          $1.15B      $329.66M      38.40          38.40      0           0  -
+       5000      100    200000          $1.15B      $640.66M      38.40          38.40      0           0  -
+       5000      100      5000          $1.15B       $34.21M      38.40          42.41     18         700  -
+      20000      100     20000          $1.20B       $80.86M      33.05          33.05      0           0  -
+      20000      100    100000          $1.20B      $329.66M      33.05          33.05      0           0  -
+      20000      100    200000          $1.20B      $640.66M      33.05          33.05      0           0  -
+     100000      100    100000          $1.45B      $329.66M      24.73          24.73      0           0  -
+     100000      100    200000          $1.45B      $640.66M      24.73          24.73      0           0  -
+     150000      100    200000          $1.60B      $640.66M       0.00           7.83      1           0  FRONTIER
+#
+## frontier membership delta (proved envelope vs superseded T + r·Δ)
+  frontier under the envelope:      18 configs at 8 distinct (x, y) locations
+  frontier under T + r·Δ (superseded): 9 configs
+  ENTERED the frontier: 12
+    + B=1,000 r=1 T=5,000
+    + B=1,000 r=1 T=20,000
+    + B=1,000 r=1 T=100,000
+    + B=1,000 r=1 T=200,000
+    + B=5,000 r=1 T=20,000
+    + B=5,000 r=1 T=100,000
+    + B=5,000 r=1 T=200,000
+    + B=20,000 r=1 T=100,000
+    + B=20,000 r=1 T=200,000
+    + B=20,000 r=10 T=100,000
+    + B=20,000 r=10 T=200,000
+    + B=100,000 r=1 T=200,000
+  LEFT the frontier:    3
+    - B=5,000 r=1 T=5,000
+    - B=5,000 r=10 T=5,000
+    - B=5,000 r=100 T=5,000
+#
+## claim re-check: is there a config with a sub-Ronin envelope AND single-digit denial?
+  under the superseded T + r·Δ ordinate: 0 config(s) qualified
+  YES — 1 config(s) qualify under the proved envelope; any claim written against the superseded ranking must be re-stated:
+    B=150,000 r=1 T=200,000  envelope $477.88M (88.5% of Ronin)  denied-or-delayed 8.68%
+#
+## locked and rule-derived ledgers under the envelope
+  LOCKED (B=1,000, r=1, T=5,000 ETH): envelope $14.49M (2.7% of Ronin) at 50.48% benign value denied-or-delayed   [superseded T + r·Δ: $15.74M]
+  rule-derived (B=1,111, r=1.64, T=5,889 ETH): envelope $22.12M (4.1% of Ronin) at 48.66%   [superseded T + r·Δ: $18.62M]

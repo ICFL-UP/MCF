@@ -1,0 +1,60 @@
+# BOLT Phase 14 — bound-validation harness (scenario_5)
+# mode(s): hardhat
+# ledger: B=1000.0 r=1.0 T=5000.0 W=3600.0 D=480.0  (docs/bolt/theorem.md)
+# ledger[locked]:   B=1000 r=1 T=5000 W=3600 D=480  (B+r*W=4600 < T — value trip UNREACHABLE; fast bound VACUOUS here, retained for continuity)
+# ledger[alt-trip]: B=1000 r=1 T=4000 W=3600 D=480  (B+r*W=4600 > T — value trip REACHABLE; PRIMARY non-vacuous config, V2 1.2)
+# bounds: fast X_max<=T+r*Δ ; patient X_slow<=B+r*D+r*Δ  (TVL-independent)
+# trip column: the breaker VALUE trip only (window outflow > T), diagnosed via
+# WithdrawalBlocked / breaker.tripped() — a detector SIGNAL trip is never flagged.
+# schedules: 45
+#
+## section ledger[locked] — B=1000.0 r=1.0 T=5000.0 W=3600.0 D=480.0  (40 schedules)
+regime   schedule                       Δ(s)     realised(ETH)     bound(ETH)    margin(ETH)  result  trip
+fast     ronin-fast                      12.0         3388.000       5012.000       1624.000  PASS  trip=no
+fast     ronin-fast                      24.0         3388.000       5024.000       1636.000  PASS  trip=no
+fast     ronin-fast                      60.0         3388.000       5060.000       1672.000  PASS  trip=no
+fast     ronin-fast                     120.0         3388.000       5120.000       1732.000  PASS  trip=no
+fast     ronin-fast                     300.0         3388.000       5300.000       1912.000  PASS  trip=no
+fast     burst-full-B                    12.0         1588.000       5012.000       3424.000  PASS  trip=no
+fast     burst-full-B                    24.0         1588.000       5024.000       3436.000  PASS  trip=no
+fast     burst-full-B                    60.0         1588.000       5060.000       3472.000  PASS  trip=no
+fast     burst-full-B                   120.0         1588.000       5120.000       3532.000  PASS  trip=no
+fast     burst-full-B                   300.0         1588.000       5300.000       3712.000  PASS  trip=no
+fast     burst-half-B                    12.0         1948.000       5012.000       3064.000  PASS  trip=no
+fast     burst-half-B                    24.0         1948.000       5024.000       3076.000  PASS  trip=no
+fast     burst-half-B                    60.0         1948.000       5060.000       3112.000  PASS  trip=no
+fast     burst-half-B                   120.0         1948.000       5120.000       3172.000  PASS  trip=no
+fast     burst-half-B                   300.0         1948.000       5300.000       3352.000  PASS  trip=no
+fast     burst-200                       12.0         1708.000       5012.000       3304.000  PASS  trip=no
+fast     burst-200                       24.0         1708.000       5024.000       3316.000  PASS  trip=no
+fast     burst-200                       60.0         1708.000       5060.000       3352.000  PASS  trip=no
+fast     burst-200                      120.0         1708.000       5120.000       3412.000  PASS  trip=no
+fast     burst-200                      300.0         1708.000       5300.000       3592.000  PASS  trip=no
+patient  ronin-patient                   12.0          600.000       1492.000        892.000  PASS  trip=no
+patient  ronin-patient                   24.0          615.000       1504.000        889.000  PASS  trip=no
+patient  ronin-patient                   60.0          660.000       1540.000        880.000  PASS  trip=no
+patient  ronin-patient                  120.0          735.000       1600.000        865.000  PASS  trip=no
+patient  ronin-patient                  300.0          960.000       1780.000        820.000  PASS  trip=no
+patient  slow-trickle                    12.0          333.333       1492.000       1158.667  PASS  trip=no
+patient  slow-trickle                    24.0          341.667       1504.000       1162.333  PASS  trip=no
+patient  slow-trickle                    60.0          366.667       1540.000       1173.333  PASS  trip=no
+patient  slow-trickle                   120.0          408.333       1600.000       1191.667  PASS  trip=no
+patient  slow-trickle                   300.0          533.333       1780.000       1246.667  PASS  trip=no
+patient  near-T-window                   12.0          633.333       1492.000        858.667  PASS  trip=no
+patient  near-T-window                   24.0          649.167       1504.000        854.833  PASS  trip=no
+patient  near-T-window                   60.0          696.667       1540.000        843.333  PASS  trip=no
+patient  near-T-window                  120.0          775.833       1600.000        824.167  PASS  trip=no
+patient  near-T-window                  300.0         1013.333       1780.000        766.667  PASS  trip=no
+patient  low-and-slow                    12.0          166.667       1492.000       1325.333  PASS  trip=no
+patient  low-and-slow                    24.0          170.833       1504.000       1333.167  PASS  trip=no
+patient  low-and-slow                    60.0          183.333       1540.000       1356.667  PASS  trip=no
+patient  low-and-slow                   120.0          204.167       1600.000       1395.833  PASS  trip=no
+patient  low-and-slow                   300.0          266.667       1780.000       1513.333  PASS  trip=no
+#
+## section ledger[alt-trip] — B=1000.0 r=1.0 T=4000.0 W=3600.0 D=480.0  (5 schedules)
+regime   schedule                       Δ(s)     realised(ETH)     bound(ETH)    margin(ETH)  result  trip
+fast     alt-sustained-d12               12.0         4000.000       4012.000         12.000  PASS  trip=YES
+fast     alt-sustained-d60               60.0         4000.000       4060.000         60.000  PASS  trip=YES
+fast     alt-sustained-d120             120.0         4000.000       4120.000        120.000  PASS  trip=YES
+fast     alt-sustained-d300             300.0         4000.000       4300.000        300.000  PASS  trip=YES
+fast     alt-ronin-fast                  60.0         4000.000       4060.000         60.000  PASS  trip=YES

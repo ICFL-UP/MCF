@@ -1,0 +1,11 @@
+Baseline: n=6000 txs, mean=43.6 ETH, std=81.2 ETH
+IsolationForest train time: 61.51 ms
+
+Case                                        z-score      class |    iforest      class
+------------------------------------------------------------------------------------------
+Normal (45 ETH, known dest)                  -0.754     NORMAL |    -0.4502     NORMAL
+Ronin (173,600 ETH, novel dest)            1067.695   CRITICAL |    -0.8319    ANOMALY
+Edge (500 ETH, known dest)                    2.046     NORMAL |    -0.7686    ANOMALY
+
+Thresholds: z-score alert=3.0, critical=6.0
+IsolationForest: score_samples < 0 => predicted ANOMALY (lower = more anomalous).

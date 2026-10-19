@@ -1,0 +1,17 @@
+# BOLT v2 deployment — 2026-07-07T19:22:57.428Z
+chainId=31337 forkBlock=25482769
+RegistryV2=0x6f058a2abc238D775531e1d391d7E0337d024Df7
+RateLimiter=0xF9C0092ae1f3B2E08D07ceAD0C2927318e7B3E21
+CircuitBreaker=0xaC10e29fFc0e2Ba64c0D91db7EA31fE45FE43E68
+BridgeV2=0x53fa102681e10C680cb1EdEe1A15ea5630e61Ac5
+
+| Operation | Gas |
+|---|---|
+| RegistryV2.deploy | 1539197 |
+| RateLimiter.deploy | 433516 |
+| CircuitBreaker.deploy | 663150 |
+| BridgeV2.deploy | 827216 |
+| RateLimiter.setConsumer | 30067 |
+| CircuitBreaker.setGate | 30134 |
+| RegistryV2.approve | 1605087 |
+| RegistryV2.executeRegister | 2478468 |
